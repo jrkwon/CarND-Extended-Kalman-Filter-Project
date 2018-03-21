@@ -25,6 +25,34 @@ void KalmanFilter::Predict() {
   TODO:
     * predict the state
   */
+  x_ = F_*x_;
+  MatrixXd Ft = F_.transpose();
+  P_ = F_*P_*Ft + Q_;
+}
+
+void KalmanFilter::_Update(const Eigen::VectorXd &z, 
+                           const Eigen::VectorXd &z_predicted,
+                           const bool isEKF = false)
+{
+  VectorXd y = z - z_predicted;
+  MatrixXd Ht = H_.transpose();
+  MatrixXd S = H_*P_*Ht + R_;
+  MatrixXd Si = S.inverse();
+  MatrixXd K = P_*Ht*Si;
+
+  // Normalize angles if this Update is for EKF
+  if (isEKF) {
+    while (y(1) > M_PI) {
+      y(1) -= 2*M_PI;
+    }
+    while (y(1) < -M_PI) {
+      y(1) += 2*M_PI;
+    }
+  }
+
+  // new state
+  x_ = x_ + (K * y);
+  P_ = (MatrixXd::Identity(x_.size(), x_.size())- K*H_)*P_; 
 }
 
 void KalmanFilter::Update(const VectorXd &z) {
@@ -32,6 +60,8 @@ void KalmanFilter::Update(const VectorXd &z) {
   TODO:
     * update the state by using Kalman Filter equations
   */
+  VectorXd z_predicted = H_*x_;
+  _Update(z, z_predicted);
 }
 
 void KalmanFilter::UpdateEKF(const VectorXd &z) {
@@ -39,4 +69,21 @@ void KalmanFilter::UpdateEKF(const VectorXd &z) {
   TODO:
     * update the state by using Extended Kalman Filter equations
   */
+  double px, py, vx, vy;
+  px = x_(0);
+  py = x_(1);
+  vx = x_(2);
+  vy = x_(3);
+
+  double rho = sqrt(px*px + py*py);
+  double phi = atan2l(py, px);
+  double rho_dot;
+  
+  // If rho is too small, then ignore it. 
+  rho_dot =  (rho < .0001) ? 0 : (px*vx + py*vy)/rho;
+
+  VectorXd z_predicted(3);
+  z_predicted << rho, phi, rho_dot;
+
+  _Update(z, z_predicted, true);
 }
